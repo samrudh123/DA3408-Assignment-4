@@ -1,0 +1,9 @@
+[server]
+headless = true
+port = 8501
+maxUploadSize = 500
+fileWatcherType = "none"
+runOnSave = false
+
+[browser]
+gatherUsageStats = false

@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: caption-app
+    folder: DA3408
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

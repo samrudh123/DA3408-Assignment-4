@@ -1,0 +1,91 @@
+groups:
+  - name: node_recording
+    interval: 5s
+    rules:
+      # AI prompt: "PromQL for the fraction of CPU time that is not idle, averaged over all cores per instance, over the last 30s, from node_cpu_seconds_total"
+      - record: instance:node_cpu_utilisation:ratio
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[30s]))
+
+      # AI prompt: "PromQL for the share of CPU time spent in each non-idle mode (user, system, iowait, ...) averaged over cores per instance over 30s"
+      - record: instance:node_cpu_mode:ratio
+        expr: avg by (instance, mode) (rate(node_cpu_seconds_total{mode!="idle"}[30s]))
+
+      # AI prompt: "PromQL for the number of logical CPUs per instance from node_exporter"
+      - record: instance:node_num_cpu:count
+        expr: count by (instance) (node_cpu_seconds_total{mode="idle"})
+
+      # AI prompt: "PromQL for the 1-minute load average divided by the number of CPUs per instance"
+      - record: instance:node_load1_per_cpu:ratio
+        expr: node_load1 / on (instance) instance:node_num_cpu:count
+
+      # AI prompt: "PromQL for the fraction of RAM in use per instance using MemAvailable and MemTotal"
+      - record: instance:node_memory_utilisation:ratio
+        expr: 1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+
+      # AI prompt: "PromQL for the fraction of swap in use per instance, returning 0 when no swap is configured"
+      - record: instance:node_swap_utilisation:ratio
+        expr: (1 - node_memory_SwapFree_bytes / (node_memory_SwapTotal_bytes > 0)) or on (instance) (node_memory_SwapTotal_bytes * 0)
+
+      # AI prompt: "PromQL for the free-space ratio of real filesystems, excluding tmpfs, ramfs, overlay, squashfs, nsfs and FUSE mounts"
+      # AI regex: fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|fuse.*"
+      - record: instance:node_filesystem_avail:ratio
+        expr: >
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|fuse.*"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|fuse.*"}
+
+      # AI prompt: "PromQL for the fraction of time each physical disk was busy over 30s, excluding loop, ram and device-mapper devices"
+      # AI regex: device!~"loop.*|ram.*|dm-.*"
+      - record: instance:node_disk_io_time:ratio
+        expr: rate(node_disk_io_time_seconds_total{device!~"loop.*|ram.*|dm-.*"}[30s])
+
+      # AI prompt: "PromQL for total network receive bytes per second per instance over 30s, excluding loopback and virtual docker/bridge/tailscale interfaces"
+      # AI regex: device!~"lo|veth.*|docker.*|br-.*|tailscale.*"
+      - record: instance:node_network_receive_bytes:rate30s
+        expr: sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*|tailscale.*"}[30s]))
+
+      # AI prompt: same as above, for transmitted bytes
+      - record: instance:node_network_transmit_bytes:rate30s
+        expr: sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*|tailscale.*"}[30s]))
+
+  - name: caption_app_recording
+    interval: 5s
+    rules:
+      # AI prompt: "PromQL for images captioned per second over 30s, split by mode and status"
+      - record: job:caption_images_processed:rate30s
+        expr: sum by (mode, status) (rate(caption_images_processed_total[30s]))
+
+      # AI prompt: "PromQL for caption requests per second over 30s, split by mode"
+      - record: job:caption_requests:rate30s
+        expr: sum by (mode) (rate(caption_requests_total[30s]))
+
+      # AI prompt: "PromQL for the median, 95th and 99th percentile of per-image inference latency over 1m from the caption_inference_seconds histogram, by mode"
+      - record: job:caption_inference_seconds:p50
+        expr: histogram_quantile(0.50, sum by (le, mode) (rate(caption_inference_seconds_bucket[1m])))
+      - record: job:caption_inference_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le, mode) (rate(caption_inference_seconds_bucket[1m])))
+      - record: job:caption_inference_seconds:p99
+        expr: histogram_quantile(0.99, sum by (le, mode) (rate(caption_inference_seconds_bucket[1m])))
+
+      # AI prompt: "PromQL for the average end-to-end request time over 1m using the _sum and _count series of the caption_request_seconds summary, by mode"
+      - record: job:caption_request_seconds:avg1m
+        expr: sum by (mode) (rate(caption_request_seconds_sum[1m])) / sum by (mode) (rate(caption_request_seconds_count[1m]))
+
+      # AI prompt: "PromQL for the fraction of images that failed over the last 1m from caption_images_processed_total with a status label"
+      - record: job:caption_image_error:ratio1m
+        expr: sum(rate(caption_images_processed_total{status="failed"}[1m])) / sum(rate(caption_images_processed_total[1m]))
+
+      # AI prompt: "PromQL for decoder tokens generated per second over 30s by model"
+      - record: job:caption_tokens:rate30s
+        expr: sum by (model) (rate(caption_tokens_generated_total[30s]))
+
+      # AI prompt: "PromQL for how many CPU cores the caption app process is using, from process_cpu_seconds_total over 30s"
+      - record: job:caption_process_cpu:cores
+        expr: rate(process_cpu_seconds_total{job="caption_app"}[30s])
+
+      # AI prompt: "PromQL for the caption app's share of total host CPU, dividing its core usage by the host CPU count from node_exporter"
+      - record: job:caption_process_cpu_share_of_host:ratio
+        expr: job:caption_process_cpu:cores / scalar(sum(instance:node_num_cpu:count))
+
+      # AI prompt: "PromQL for the caption app's resident memory as a fraction of total host RAM"
+      - record: job:caption_process_memory_share_of_host:ratio
+        expr: process_resident_memory_bytes{job="caption_app"} / scalar(sum(node_memory_MemTotal_bytes))

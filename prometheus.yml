@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+  external_labels:
+    environment: local
+    project: da3408-a4
+
+rule_files:
+  - rules/recording_rules.yml
+
+scrape_configs:
+  - job_name: caption_app
+    static_configs:
+      - targets: ["localhost:18000"]
+        labels:
+          service: caption-app
+
+  - job_name: node
+    static_configs:
+      - targets: ["localhost:9100"]
+        labels:
+          service: host
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: monitoring
